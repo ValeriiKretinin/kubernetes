@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: etcd-restore
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: etcd-restore
+          image: bitnami/etcd
+          securityContext:
+            runAsUser: 0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              if [ -z "$ETCD_BACKUP_VERSION" ]; then
+                LATEST_BACKUP=$(ls -t /etcd_backup/etcd-snapshot-*.db | head -1)
+                etcdctl snapshot restore "$LATEST_BACKUP" \
+                  --data-dir /var/lib/etcd-restore
+              else
+                etcdctl snapshot restore "/etcd_backup/etcd-snapshot-$ETCD_BACKUP_VERSION.db" \
+                  --data-dir /var/lib/etcd-restore
+              fi
+          envFrom:
+            - configMapRef:
+                name: etcd-env
+          volumeMounts:
+            - name: etcd-certs
+              mountPath: /etc/ssl/etcd/ssl
+              readOnly: true
+            - name: backup
+              mountPath: /etcd_backup
+      restartPolicy: OnFailure
+      volumes:
+        - name: etcd-certs
+          hostPath:
+            path: /etc/ssl/etcd/ssl
+        - name: backup
+          persistentVolumeClaim:
+            claimName: etcd-backup
+
